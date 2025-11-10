@@ -35,7 +35,7 @@
     <!-- Estrutura Principal da Aplicação --><div class="min-h-screen p-4 sm:p-6 lg:p-8">
 
         <!-- Cabeçalho --><header class="bg-white shadow-lg rounded-xl p-5 mb-6 flex flex-col items-center">
-            <!-- LOGO REMOVIDO: Como a imagem não carregou, removemos a tag <img> para evitar o erro visual. --><h1 class="text-3xl font-extrabold text-gray-800 text-center">FarmoGentileza</h1>
+            <h1 class="text-3xl font-extrabold text-gray-800 text-center">FarmoGentileza</h1>
             <h2 class="text-xl font-semibold text-gray-700 text-center mt-1">FarmoGentileza Tech</h2>
             <p class="text-gray-500 mt-1 text-center">Projeto: Relatório Mensal das Fichas de Stock - Automatização por Entrada de Voz</p>
             <div id="user-info" class="mt-3 text-sm font-medium text-indigo-600 text-center">
@@ -133,7 +133,26 @@
 
         // Variáveis Globais (MANDATÓRIAS)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+        // =========================================================================================
+        // !!! CONFIGURAÇÃO FIREBASE UTILIZADA !!!
+        // Os valores que forneceu foram inseridos abaixo:
+        // =========================================================================================
+
+        const EXTERNAL_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyAOo2Nc_7lh6cMb-EN6OaoLAQmduH3A-sw",
+            authDomain: "farmogentilezatech.firebaseapp.com",
+            projectId: "farmogentilezatech",
+            storageBucket: "farmogentilezatech.firebasestorage.app",
+            messagingSenderId: "484971948639",
+            appId: "1:484971948639:web:e4e5b492fd7021621949ea"
+        };
+        // <<< FIM DA CONFIGURAÇÃO FIREBASE >>>
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : EXTERNAL_FIREBASE_CONFIG;
+            
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let db;
@@ -148,30 +167,37 @@
          */
         async function setupFirebase() {
             try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
+                // Checa se a configuração é válida antes de inicializar.
+                if (firebaseConfig.projectId && firebaseConfig.projectId !== "") {
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                } else {
+                    document.getElementById('user-info').textContent = '⚠️ Configuração incompleta. Base de dados offline.';
+                    console.error("ERRO CRÍTICO: Configuração do Firebase incompleta. A aplicação não conseguirá guardar dados.");
+                    return;
+                }
 
                 // Configurar o listener de estado de autenticação
                 onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         userId = user.uid;
-                        document.getElementById('user-info').textContent = `Utilizador: ${userId.substring(0, 8)}... (ID Completo: ${userId})`;
+                        document.getElementById('user-info').textContent = `Utilizador Ativo: ${userId.substring(0, 8)}... (ID Completo: ${userId})`;
                         isAuthReady = true;
                         loadDispenses(); // Carregar dados assim que a autenticação estiver pronta
                     } else {
-                        // Tentar autenticar com o token customizado ou anonimamente
+                        // Tentar autenticar com o token customizado (para o Canvas) ou anonimamente (para hospedagem externa)
                         if (initialAuthToken) {
                             await signInWithCustomToken(auth, initialAuthToken);
                         } else {
-                            await signInAnonymously(auth);
+                            await signInAnonymously(auth); 
                         }
                     }
                 });
 
             } catch (error) {
                 console.error("Erro na inicialização do Firebase:", error);
-                document.getElementById('user-info').textContent = 'Erro ao inicializar o sistema de dados.';
+                document.getElementById('user-info').textContent = 'Erro grave ao inicializar o sistema de dados. (Verifique a sua Consola)';
             }
         }
 
@@ -217,12 +243,9 @@
                 // Tentar automaticamente mover para o próximo campo (para otimizar o fluxo)
                 if (inputElement.id === 'productName') {
                     document.getElementById('productType').focus();
-                    document.getElementById('btnVoiceType').click(); // Iniciar voz para o próximo campo
                 } else if (inputElement.id === 'productType') {
                     document.getElementById('quantity').focus();
-                    document.getElementById('btnVoiceQuantity').click(); // Iniciar voz para a quantidade
                 }
-                // O campo de quantidade não avança automaticamente; requer confirmação.
             };
 
             recognition.onerror = (event) => {
@@ -260,8 +283,8 @@
          * Guarda um novo registo de dispensa no Firestore.
          */
         async function saveDispense() {
-            if (!isAuthReady || !userId) {
-                showStatus('Sistema não autenticado. A aguardar...', 'text-red-500');
+            if (!isAuthReady || !userId || !db) {
+                showStatus('Sistema não autenticado. A aguardar... (Base de dados inacessível)', 'text-red-500');
                 return;
             }
 
@@ -284,7 +307,7 @@
             btnSave.disabled = true;
 
             try {
-                // Caminho da coleção de dados privados: /artifacts/{appId}/users/{userId}/{your_collection_name}
+                // Caminho da coleção de dados privados: /artifacts/{appId}/users/{userId}/dispenses
                 const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/dispenses`), {
                     productName: productName,
                     productType: productType,
@@ -303,7 +326,7 @@
 
             } catch (e) {
                 console.error("Erro ao adicionar documento:", e);
-                showStatus(`Erro ao guardar o registo: ${e.message}`, 'text-red-500');
+                showStatus(`Erro ao guardar o registo. Verifique se o Firestore está ATIVADO. Mensagem: ${e.message}`, 'text-red-500');
             } finally {
                 // Ocultar carregamento
                 saveText.textContent = 'Registar Dispensa';
@@ -318,11 +341,8 @@
         function loadDispenses() {
             if (!isAuthReady || !userId || !db) return;
 
-            // Ordenar por data (mais recente primeiro)
             const dispensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/dispenses`);
 
-            // Nota: Evito 'orderBy' em onSnapshot, conforme a instrução de evitar indexação.
-            // A ordenação será feita em memória (por timestamp) após a receção dos dados.
             onSnapshot(dispensesCollectionRef, (snapshot) => {
                 const dispenses = [];
                 snapshot.forEach((doc) => {
@@ -335,7 +355,7 @@
                 renderDispenses(dispenses.slice(0, 10));
             }, (error) => {
                 console.error("Erro ao carregar dispensas em tempo real:", error);
-                document.getElementById('no-data-msg').textContent = 'Erro ao carregar dados.';
+                document.getElementById('no-data-msg').textContent = 'Erro ao carregar dados. Verifique as regras de segurança do Firestore.';
             });
         }
 
@@ -375,7 +395,7 @@
          */
         async function generateReport(monthYearString) {
             if (!isAuthReady || !userId || !db) {
-                showStatus('Sistema não autenticado. A aguardar...', 'text-red-500');
+                showStatus('Sistema não autenticado. A aguardar... (Base de dados inacessível)', 'text-red-500');
                 return;
             }
 
@@ -384,10 +404,13 @@
                 return;
             }
 
+            // Exibir carregamento para o relatório
+            const btnReport = document.getElementById('btnGenerateReport');
+            const originalReportText = btnReport.textContent;
+            btnReport.textContent = 'A Gerar...';
+            btnReport.disabled = true;
+
             showStatus('A processar dados para o relatório...', 'text-yellow-600');
-            
-            // Note: Não há necessidade de extrair ano/mês para filtragem neste protótipo.
-            // A filtragem pelo campo 'dispenseDate' formatado é mais simples.
             
             try {
                 const dispensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/dispenses`);
@@ -424,16 +447,13 @@
                 // --- Geração do HTML para o Word (.doc) ---
                 const dataArray = Object.values(aggregatedData);
                 
-                // Cabeçalhos da tabela
-                const headers = ['Nome do Produto', 'Tipo (Dosagem/Formato)', 'Quantidade Dispensada'];
-
                 // Estrutura do documento HTML (com estilos embutidos para compatibilidade com o Word)
                 let tableHtml = `
                     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
                     <head><meta charset='utf-8'></head>
                     <body>
                         <div style="font-family: Arial, sans-serif;">
-                            <!-- LOGO REMOVIDO DO RELATÓRIO TAMBÉM --><h1 style="text-align: center; color: #1e3a8a; margin-bottom: 5px;">FarmoGentileza</h1>
+                            <h1 style="text-align: center; color: #1e3a8a; margin-bottom: 5px;">FarmoGentileza</h1>
                             <h2 style="text-align: center; color: #4a5568; margin-top: 0; margin-bottom: 20px; font-size: 1.5em;">FarmoGentileza Tech - Relatório Mensal das Fichas de Stock (${monthYearString})</h2>
                             <table border="1" style="width: 100%; border-collapse: collapse;">
                                 <!-- Cabeçalho --><tr style="background-color: #e0f2fe; color: #1e3a8a; font-weight: bold;">
@@ -463,13 +483,12 @@
                 `;
 
                 // Criação do link de download
-                // Usar 'application/msword' e a extensão '.doc' para que o Word reconheça o ficheiro
                 const mimeType = 'application/msword'; 
                 const blob = new Blob([tableHtml], { type: mimeType });
                 const link = document.createElement("a");
                 const url = URL.createObjectURL(blob);
                 link.setAttribute("href", url);
-                link.setAttribute("download", `Relatorio_Farmacia_${monthYearString}.doc`); // Extensão alterada para .doc
+                link.setAttribute("download", `Relatorio_Farmacia_${monthYearString}.doc`); 
                 link.style.visibility = 'hidden';
                 document.body.appendChild(link);
                 link.click();
@@ -480,6 +499,10 @@
             } catch (e) {
                 console.error("Erro ao gerar relatório:", e);
                 showStatus(`Erro ao gerar relatório: ${e.message}`, 'text-red-500');
+            } finally {
+                // Ocultar carregamento do relatório
+                btnReport.textContent = originalReportText;
+                btnReport.disabled = false;
             }
         }
 
