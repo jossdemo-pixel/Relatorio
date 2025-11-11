@@ -81,7 +81,7 @@
                 </div>
             </div>
 
-            <!-- Botão de Submissão --><button id="btnSaveDispense" class="btn-primary mt-6 w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+            <!-- Botão de Submissão/Atualização --><button id="btnSaveDispense" class="btn-primary mt-6 w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
                 <span id="save-text">Registar Dispensa</span>
                 <span id="loading-spinner" class="hidden animate-spin h-5 w-5 border-t-2 border-b-2 border-white rounded-full ml-2"></span>
             </button>
@@ -130,6 +130,8 @@
     <!-- Script de Configuração e Lógica da Aplicação --><script>
         // Variável de chave para o armazenamento local
         const STORAGE_KEY = 'farmoGentilezaDispenses';
+        // Variável global para rastrear o ID do registo que está a ser editado
+        let editingDispenseId = null; 
 
         /**
          * Funções de Acesso ao LocalStorage
@@ -185,7 +187,10 @@
             voiceButton.onclick = () => {
                 try {
                     recognition.start();
-                    inputElement.value = ''; // Limpar antes de começar a ouvir
+                    // Não limpar o input no modo de edição (o utilizador pode querer editar uma parte)
+                    if (!editingDispenseId) {
+                         inputElement.value = ''; 
+                    }
                     voiceButton.classList.add('voice-active');
                     showStatus(`A ouvir para ${prompt}... Diga claramente.`, 'text-indigo-600');
                 } catch (e) {
@@ -240,9 +245,25 @@
         }
 
         /**
-         * Guarda um novo registo de dispensa no LocalStorage.
+         * Limpa os campos de input e reseta o botão, saindo do modo de edição.
          */
-        async function saveDispense() {
+        function cancelEdit() {
+            editingDispenseId = null;
+            document.getElementById('productName').value = '';
+            document.getElementById('productType').value = '';
+            document.getElementById('quantity').value = '';
+
+            // Resetar o botão para o modo de Registo
+            const btnSave = document.getElementById('btnSaveDispense');
+            document.getElementById('save-text').textContent = 'Registar Dispensa';
+            btnSave.classList.replace('bg-indigo-600', 'bg-green-600');
+            btnSave.classList.replace('hover:bg-indigo-700', 'hover:bg-green-700');
+        }
+
+        /**
+         * Guarda um novo registo ou atualiza um existente no LocalStorage.
+         */
+        async function saveOrUpdateDispense() {
             const productName = document.getElementById('productName').value.trim();
             const productType = document.getElementById('productType').value.trim();
             const quantityStr = document.getElementById('quantity').value.trim();
@@ -257,39 +278,55 @@
             const btnSave = document.getElementById('btnSaveDispense');
             const saveText = document.getElementById('save-text');
             const spinner = document.getElementById('loading-spinner');
-            saveText.textContent = 'A Guardar...';
+            const originalText = saveText.textContent;
+            
+            saveText.textContent = editingDispenseId ? 'A Atualizar...' : 'A Guardar...';
             spinner.classList.remove('hidden');
             btnSave.disabled = true;
 
             try {
-                const currentDispenses = getDispensesFromStorage();
-                
-                const newDispense = {
-                    id: Date.now().toString(), // ID único baseado no tempo
-                    productName: productName,
-                    productType: productType,
-                    quantityDispensed: quantity,
-                    timestamp: Date.now(), // Tempo em milissegundos
-                    dispenseDate: new Date().toISOString().split('T')[0], // Data YYYY-MM-DD
-                };
+                let currentDispenses = getDispensesFromStorage();
+                let successMessage = '';
 
-                currentDispenses.push(newDispense);
+                if (editingDispenseId) {
+                    // Modo Edição (Update)
+                    const index = currentDispenses.findIndex(d => d.id === editingDispenseId);
+
+                    if (index !== -1) {
+                        currentDispenses[index].productName = productName;
+                        currentDispenses[index].productType = productType;
+                        currentDispenses[index].quantityDispensed = quantity;
+                        // Mantemos o timestamp original para efeitos de relatório
+                        successMessage = `Registo de ${productName} atualizado com sucesso!`;
+                    } else {
+                        throw new Error("ID de edição não encontrado na lista.");
+                    }
+                } else {
+                    // Modo Novo Registo (Save)
+                    const newDispense = {
+                        id: Date.now().toString(), // ID único baseado no tempo
+                        productName: productName,
+                        productType: productType,
+                        quantityDispensed: quantity,
+                        timestamp: Date.now(), // Tempo em milissegundos
+                        dispenseDate: new Date().toISOString().split('T')[0], // Data YYYY-MM-DD
+                    };
+                    currentDispenses.push(newDispense);
+                    successMessage = `Dispensa de ${productName} (Qtd: ${quantity}) registada com sucesso!`;
+                }
+
                 saveDispensesToStorage(currentDispenses);
+                showStatus(successMessage + ' (Salva localmente)', 'text-green-600');
 
-                showStatus(`Dispensa de ${productName} (Qtd: ${quantity}) registada com sucesso! (Salva localmente)`, 'text-green-600');
-
-                // Limpar campos após o sucesso
-                document.getElementById('productName').value = '';
-                document.getElementById('productType').value = '';
-                document.getElementById('quantity').value = '';
-
+                // Limpar/Resetar UI após o sucesso
+                cancelEdit(); 
                 loadDispenses(); // Atualizar a lista local
             } catch (e) {
-                console.error("Erro ao adicionar registo local:", e);
+                console.error("Erro ao adicionar/atualizar registo local:", e);
                 showStatus(`Erro ao guardar o registo: ${e.message}`, 'text-red-500');
             } finally {
                 // Ocultar carregamento
-                saveText.textContent = 'Registar Dispensa';
+                saveText.textContent = originalText;
                 spinner.classList.add('hidden');
                 btnSave.disabled = false;
             }
@@ -310,12 +347,43 @@
                     saveDispensesToStorage(updatedDispenses);
                     showStatus('Registo eliminado com sucesso. A lista foi atualizada.', 'text-red-600');
                     loadDispenses(); // Recarrega a lista para atualizar a UI
+                    cancelEdit(); // Sai do modo de edição se o registo apagado for o que estava a ser editado
                 } else {
                     showStatus('Erro: O registo não foi encontrado.', 'text-orange-500');
                 }
             } catch (e) {
                 console.error("Erro ao eliminar registo local:", e);
                 showStatus(`Erro ao eliminar registo: ${e.message}`, 'text-red-500');
+            }
+        }
+
+        /**
+         * Funçao para carregar os dados de um registo no formulário para edição.
+         * @param {string} id O ID único do registo a editar.
+         */
+        function editDispense(id) {
+            const dispenses = getDispensesFromStorage();
+            const dispenseToEdit = dispenses.find(d => d.id === id);
+
+            if (dispenseToEdit) {
+                // 1. Preencher os campos do formulário
+                document.getElementById('productName').value = dispenseToEdit.productName;
+                document.getElementById('productType').value = dispenseToEdit.productType;
+                document.getElementById('quantity').value = dispenseToEdit.quantityDispensed;
+
+                // 2. Mudar o estado para edição
+                editingDispenseId = id;
+
+                // 3. Mudar o texto e cor do botão de salvar para Atualizar
+                const btnSave = document.getElementById('btnSaveDispense');
+                document.getElementById('save-text').textContent = 'Atualizar Registo';
+                btnSave.classList.replace('bg-green-600', 'bg-indigo-600');
+                btnSave.classList.replace('hover:bg-green-700', 'hover:bg-indigo-700');
+                
+                showStatus('A editar o registo. Altere os campos e clique em "Atualizar Registo".', 'text-indigo-600');
+                document.getElementById('productName').focus(); // Foco no primeiro campo
+            } else {
+                showStatus('Erro: Registo a editar não encontrado.', 'text-red-500');
             }
         }
 
@@ -330,7 +398,7 @@
                 // Ordenar em memória (descendente)
                 dispenses.sort((a, b) => b.timestamp - a.timestamp); 
 
-                // ATUALIZADO: Carrega todos os registos.
+                // Carrega todos os registos.
                 renderDispenses(dispenses);
             } catch (error) {
                 console.error("Erro ao carregar dispensas locais:", error);
@@ -340,7 +408,7 @@
 
         /**
          * Renderiza a lista de dispensas recentes no UI.
-         * ATUALIZADO: Adiciona botão de eliminar a cada item.
+         * ATUALIZADO: Adiciona botões de editar e eliminar a cada item.
          * @param {Array} dispenses Array de objetos de dispensa.
          */
         function renderDispenses(dispenses) {
@@ -359,7 +427,7 @@
                 const dateString = timestamp.toLocaleDateString('pt-PT');
 
                 const item = document.createElement('div');
-                item.className = 'bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-gray-100 transition duration-150 relative'; // Adicionado relative para posicionar o botão
+                item.className = 'bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-gray-100 transition duration-150 relative'; 
                 item.innerHTML = `
                     <div class="flex justify-between items-start">
                         <div>
@@ -368,14 +436,22 @@
                             <p class="text-lg font-extrabold text-purple-600">Qtd: ${dispense.quantityDispensed}</p>
                             <p class="text-xs text-gray-400 mt-1">Registo: ${dateString} às ${timeString}</p>
                         </div>
-                        <!-- Botão de Eliminar Individual -->
-                        <button onclick="deleteDispense('${dispense.id}')" 
-                                class="p-2 text-red-500 hover:text-red-700 bg-red-100 rounded-full transition duration-150 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500" 
-                                title="Eliminar este registo">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                            </svg>
-                        </button>
+                        <div class="flex space-x-2"> 
+                            <!-- Botão de Editar Individual -->
+                            <button onclick="editDispense('${dispense.id}')" 
+                                    class="p-2 text-indigo-500 hover:text-indigo-700 bg-indigo-100 rounded-full transition duration-150 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                    title="Editar este registo">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                            </button>
+                            <!-- Botão de Eliminar Individual -->
+                            <button onclick="deleteDispense('${dispense.id}')" 
+                                    class="p-2 text-red-500 hover:text-red-700 bg-red-100 rounded-full transition duration-150 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500" 
+                                    title="Eliminar este registo">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 `;
                 listEl.appendChild(item);
@@ -513,6 +589,7 @@
                     
                     showStatus('TODOS os registos foram APAGADOS com sucesso do seu navegador.', 'text-red-700 bg-red-100 p-2 rounded');
                     loadDispenses(); // Atualizar a lista (que estará vazia)
+                    cancelEdit(); // Sai do modo de edição
                 } catch (e) {
                     console.error("Erro ao limpar o localStorage:", e);
                     showStatus('Erro ao limpar os dados locais.', 'text-red-500');
@@ -547,8 +624,8 @@
             setupVoiceRecognition(document.getElementById('productType'), 'Tipo/Dosagem');
             setupVoiceRecognition(document.getElementById('quantity'), 'Quantidade');
 
-            // Evento de Guardar Dispensa
-            document.getElementById('btnSaveDispense').addEventListener('click', saveDispense);
+            // Evento de Guardar/Atualizar Dispensa
+            document.getElementById('btnSaveDispense').addEventListener('click', saveOrUpdateDispense);
 
             // Evento de Geração de Relatório
             document.getElementById('btnGenerateReport').addEventListener('click', () => {
