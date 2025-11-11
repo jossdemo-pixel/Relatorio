@@ -108,7 +108,7 @@
                     Gerar e Descarregar Relatório (DOC - Word)
                 </button>
 
-                <!-- NOVO Botão Limpar Registo --><button id="btnClearDispenses" class="btn-primary mt-4 w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                <!-- Botão Limpar Registo --><button id="btnClearDispenses" class="btn-primary mt-4 w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
                     Limpar TODOS os Registos (Atenção!)
                 </button>
             </div>
@@ -294,6 +294,31 @@
                 btnSave.disabled = false;
             }
         }
+        
+        /**
+         * Funçao para eliminar um registo individual pelo seu ID.
+         * @param {string} id O ID único do registo a eliminar.
+         */
+        function deleteDispense(id) {
+            try {
+                let currentDispenses = getDispensesFromStorage();
+                
+                // Filtra o array, mantendo apenas os elementos cujo ID não corresponde ao ID a ser eliminado.
+                const updatedDispenses = currentDispenses.filter(dispense => dispense.id !== id);
+
+                if (updatedDispenses.length < currentDispenses.length) {
+                    saveDispensesToStorage(updatedDispenses);
+                    showStatus('Registo eliminado com sucesso. A lista foi atualizada.', 'text-red-600');
+                    loadDispenses(); // Recarrega a lista para atualizar a UI
+                } else {
+                    showStatus('Erro: O registo não foi encontrado.', 'text-orange-500');
+                }
+            } catch (e) {
+                console.error("Erro ao eliminar registo local:", e);
+                showStatus(`Erro ao eliminar registo: ${e.message}`, 'text-red-500');
+            }
+        }
+
 
         /**
          * Carrega os registos de dispensa do LocalStorage.
@@ -315,6 +340,7 @@
 
         /**
          * Renderiza a lista de dispensas recentes no UI.
+         * ATUALIZADO: Adiciona botão de eliminar a cada item.
          * @param {Array} dispenses Array de objetos de dispensa.
          */
         function renderDispenses(dispenses) {
@@ -333,12 +359,24 @@
                 const dateString = timestamp.toLocaleDateString('pt-PT');
 
                 const item = document.createElement('div');
-                item.className = 'bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-gray-100 transition duration-150';
+                item.className = 'bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-gray-100 transition duration-150 relative'; // Adicionado relative para posicionar o botão
                 item.innerHTML = `
-                    <p class="font-bold text-gray-800">${dispense.productName}</p>
-                    <p class="text-sm text-gray-600">Tipo: ${dispense.productType}</p>
-                    <p class="text-lg font-extrabold text-purple-600">Qtd: ${dispense.quantityDispensed}</p>
-                    <p class="text-xs text-gray-400 mt-1">Registo: ${dateString} às ${timeString}</p>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-gray-800">${dispense.productName}</p>
+                            <p class="text-sm text-gray-600">Tipo: ${dispense.productType}</p>
+                            <p class="text-lg font-extrabold text-purple-600">Qtd: ${dispense.quantityDispensed}</p>
+                            <p class="text-xs text-gray-400 mt-1">Registo: ${dateString} às ${timeString}</p>
+                        </div>
+                        <!-- Botão de Eliminar Individual -->
+                        <button onclick="deleteDispense('${dispense.id}')" 
+                                class="p-2 text-red-500 hover:text-red-700 bg-red-100 rounded-full transition duration-150 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500" 
+                                title="Eliminar este registo">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </div>
                 `;
                 listEl.appendChild(item);
             });
@@ -518,7 +556,7 @@
                 generateReport(monthYear);
             });
 
-            // NOVO: Evento de Limpar Registo
+            // Evento de Limpar Registo Total
             document.getElementById('btnClearDispenses').addEventListener('click', (event) => {
                 clearDispenses(event.currentTarget);
             });
