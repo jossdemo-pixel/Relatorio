@@ -107,6 +107,10 @@
                 <!-- Botão alterado para refletir o novo formato (.doc) --><button id="btnGenerateReport" class="btn-primary mt-4 w-full bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2">
                     Gerar e Descarregar Relatório (DOC - Word)
                 </button>
+
+                <!-- NOVO Botão Limpar Registo --><button id="btnClearDispenses" class="btn-primary mt-4 w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                    Limpar TODOS os Registos (Atenção!)
+                </button>
             </div>
 
             <!-- Lista de Registos Recentes (Dados em Tempo Real) --><div class="lg:col-span-2 bg-white shadow-xl rounded-xl p-6 border-t-4 border-purple-500">
@@ -301,7 +305,7 @@
                 // Ordenar em memória (descendente)
                 dispenses.sort((a, b) => b.timestamp - a.timestamp); 
 
-                // ATUALIZADO: Removemos o .slice(0, 10) para carregar todos os registos.
+                // ATUALIZADO: Carrega todos os registos.
                 renderDispenses(dispenses);
             } catch (error) {
                 console.error("Erro ao carregar dispensas locais:", error);
@@ -450,6 +454,51 @@
                 btnReport.disabled = false;
             }
         }
+        
+        // Variável de estado para a confirmação de limpeza
+        let isClearConfirmed = false;
+
+        /**
+         * Limpa todos os registos do LocalStorage com confirmação de clique duplo.
+         * @param {HTMLElement} button O botão de limpar.
+         */
+        function clearDispenses(button) {
+            if (isClearConfirmed) {
+                // Ação de limpeza confirmada
+                try {
+                    localStorage.removeItem(STORAGE_KEY);
+                    // Resetar imediatamente para evitar cliques acidentais
+                    isClearConfirmed = false;
+                    button.textContent = 'Limpar TODOS os Registos (Atenção!)';
+                    button.classList.replace('bg-orange-600', 'bg-red-600');
+                    button.classList.replace('hover:bg-orange-700', 'hover:bg-red-700');
+                    
+                    showStatus('TODOS os registos foram APAGADOS com sucesso do seu navegador.', 'text-red-700 bg-red-100 p-2 rounded');
+                    loadDispenses(); // Atualizar a lista (que estará vazia)
+                } catch (e) {
+                    console.error("Erro ao limpar o localStorage:", e);
+                    showStatus('Erro ao limpar os dados locais.', 'text-red-500');
+                }
+            } else {
+                // Primeiro clique: Pedir confirmação
+                isClearConfirmed = true;
+                button.textContent = 'CLIQUE NOVAMENTE para Confirmar (Apagar TUDO)';
+                button.classList.replace('bg-red-600', 'bg-orange-600');
+                button.classList.replace('hover:bg-red-700', 'hover:bg-orange-700');
+                showStatus('AVISO: Clique no botão de limpar novamente para apagar permanentemente todos os dados.', 'text-orange-600');
+
+                // Resetar o estado de confirmação após 5 segundos se não houver um segundo clique
+                setTimeout(() => {
+                    if (isClearConfirmed) {
+                        isClearConfirmed = false;
+                        button.textContent = 'Limpar TODOS os Registos (Atenção!)';
+                        button.classList.replace('bg-orange-600', 'bg-red-600');
+                        button.classList.replace('hover:bg-orange-700', 'hover:bg-red-700');
+                        showStatus('Confirmação expirada. Tente novamente.', 'text-gray-500');
+                    }
+                }, 5000);
+            }
+        }
 
         // --- Configuração dos Event Listeners ---
         window.onload = function() {
@@ -467,6 +516,11 @@
             document.getElementById('btnGenerateReport').addEventListener('click', () => {
                 const monthYear = document.getElementById('reportMonth').value;
                 generateReport(monthYear);
+            });
+
+            // NOVO: Evento de Limpar Registo
+            document.getElementById('btnClearDispenses').addEventListener('click', (event) => {
+                clearDispenses(event.currentTarget);
             });
 
             // Definir o mês atual como padrão no seletor de relatórios
