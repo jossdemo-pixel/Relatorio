@@ -468,6 +468,10 @@
                 return;
             }
 
+            // Extrai MM/AAAA do formato YYYY-MM
+            const [year, month] = monthYearString.split('-');
+            const monthYearShort = `${month}/${year}`;
+
             // Exibir carregamento para o relatório
             const btnReport = document.getElementById('btnGenerateReport');
             const originalReportText = btnReport.textContent;
@@ -516,8 +520,10 @@
                     <head><meta charset='utf-8'></head>
                     <body>
                         <div style="font-family: Arial, sans-serif;">
-                            <h1 style="text-align: center; color: #1e3a8a; margin-bottom: 5px;">FarmoGentileza</h1>
-                            <h2 style="text-align: center; color: #4a5568; margin-top: 0; margin-bottom: 20px; font-size: 1.5em;">FarmoGentileza Tech - Relatório Mensal das Fichas de Stock (${monthYearString})</h2>
+                            <!-- NOVO CABEÇALHO SIMPLIFICADO -->
+                            <h2 style="text-align: center; color: #4a5568; margin-top: 0; margin-bottom: 20px; font-size: 1.5em; font-weight: bold;">
+                                Relatório dos Gastáveis de ${monthYearShort}
+                            </h2>
                             <table border="1" style="width: 100%; border-collapse: collapse;">
                                 <!-- Cabeçalho --><tr style="background-color: #e0f2fe; color: #1e3a8a; font-weight: bold;">
                                     <th style="padding: 12px; text-align: left; border: 1px solid #aaa;">Nome do Produto</th>
@@ -537,9 +543,8 @@
 
                 tableHtml += `
                             </table>
-                            <p style="margin-top: 30px; font-size: 14px;">Total de Dispensas únicas agregadas: ${dataArray.length}.</p>
-                            <p style="margin-top: 50px;">_________________________</p>
-                            <p>Assinatura do Farmacêutico</p>
+                            <!-- REMOÇÃO DE TEXTOS FINAIS E ASSINATURA -->
+                            <p style="margin-top: 100px;">&nbsp;</p> 
                         </div>
                     </body>
                     </html>
@@ -551,7 +556,7 @@
                 const link = document.createElement("a");
                 const url = URL.createObjectURL(blob);
                 link.setAttribute("href", url);
-                link.setAttribute("download", `Relatorio_Farmacia_${monthYearString}.doc`); 
+                link.setAttribute("download", `Relatorio_Gastaveis_${monthYearShort.replace('/', '_')}.doc`); 
                 link.style.visibility = 'hidden';
                 document.body.appendChild(link);
                 link.click();
